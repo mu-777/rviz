@@ -30,25 +30,26 @@
 #ifndef RVIZ_ROBOT_MODEL_DISPLAY_H
 #define RVIZ_ROBOT_MODEL_DISPLAY_H
 
-#include "rviz/display.h"
+//#include "rviz/display.h"
+
+#include <sensor_msgs/Illuminance.h>
+
+#include "rviz/message_filter_display.h"
 
 #include <OgreVector3.h>
 
 #include <map>
 
-namespace Ogre
-{
+namespace Ogre {
 class Entity;
 class SceneNode;
 }
 
-namespace rviz
-{
+namespace rviz {
 class Axes;
 }
 
-namespace rviz
-{
+namespace rviz {
 
 class FloatProperty;
 class Property;
@@ -59,55 +60,57 @@ class StringProperty;
  * \class RobotModelDisplay
  * \brief Uses a robot xml description to display the pieces of a robot at the transforms broadcast by rosTF
  */
-class RobotModelDisplay: public Display
-{
-Q_OBJECT
+class RobotModelDisplay: public MessageFilterDisplay<sensor_msgs::Illuminance> {
+    Q_OBJECT
 public:
-  RobotModelDisplay();
-  virtual ~RobotModelDisplay();
+    RobotModelDisplay();
+    virtual ~RobotModelDisplay();
 
-  // Overrides from Display
-  virtual void onInitialize();
-  virtual void update( float wall_dt, float ros_dt );
-  virtual void fixedFrameChanged();
-  virtual void reset();
+    // Overrides from Display
+    virtual void onInitialize();
+    virtual void update(float wall_dt, float ros_dt);
+    virtual void fixedFrameChanged();
+    virtual void reset();
 
-  void clear();
-
-private Q_SLOTS:
-  void updateVisualVisible();
-  void updateCollisionVisible();
-  void updateTfPrefix();
-  void updateAlpha();
-  void updateRobotDescription();
+    void clear();
 
 protected:
-  /** @brief Loads a URDF from the ros-param named by our
-   * "Robot Description" property, iterates through the links, and
-   * loads any necessary models. */
-  virtual void load();
+    virtual void processMessage(const sensor_msgs::Illuminance::ConstPtr& msg);
 
-  // overrides from Display
-  virtual void onEnable();
-  virtual void onDisable();
+private Q_SLOTS:
+    void updateVisualVisible();
+    void updateCollisionVisible();
+    void updateTfPrefix();
+    void updateAlpha();
+    void updateRobotDescription();
 
-  Robot* robot_;                 ///< Handles actually drawing the robot
+protected:
+    /** @brief Loads a URDF from the ros-param named by our
+     * "Robot Description" property, iterates through the links, and
+     * loads any necessary models. */
+    virtual void load();
 
-  bool has_new_transforms_;      ///< Callback sets this to tell our update function it needs to update the transforms
+    // overrides from Display
+    virtual void onEnable();
+    virtual void onDisable();
 
-  float time_since_last_transform_;
+    Robot* robot_;                 ///< Handles actually drawing the robot
 
-  std::string robot_description_;
+    bool has_new_transforms_;      ///< Callback sets this to tell our update function it needs to update the transforms
 
-  Property* visual_enabled_property_;
-  Property* collision_enabled_property_;
-  FloatProperty* update_rate_property_;
-  StringProperty* robot_description_property_;
-  FloatProperty* alpha_property_;
-  StringProperty* tf_prefix_property_;
+    float time_since_last_transform_;
+
+    std::string robot_description_;
+
+    Property* visual_enabled_property_;
+    Property* collision_enabled_property_;
+    FloatProperty* update_rate_property_;
+    StringProperty* robot_description_property_;
+    FloatProperty* alpha_property_;
+    StringProperty* tf_prefix_property_;
 };
 
 } // namespace rviz
 
- #endif
+#endif
 

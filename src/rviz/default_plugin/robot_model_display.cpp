@@ -43,209 +43,186 @@
 
 #include "robot_model_display.h"
 
-namespace rviz
-{
+namespace rviz {
 
-void linkUpdaterStatusFunction( StatusProperty::Level level,
-                                const std::string& link_name,
-                                const std::string& text,
-                                RobotModelDisplay* display )
-{
-  display->setStatus( level, QString::fromStdString( link_name ), QString::fromStdString( text ));
+void linkUpdaterStatusFunction(StatusProperty::Level level,
+                               const std::string& link_name,
+                               const std::string& text,
+                               RobotModelDisplay* display) {
+    display->setStatus(level, QString::fromStdString(link_name), QString::fromStdString(text));
 }
 
 RobotModelDisplay::RobotModelDisplay()
-  : Display()
-  , has_new_transforms_( false )
-  , time_since_last_transform_( 0.0f )
-{
-  visual_enabled_property_ = new Property( "Visual Enabled", true,
-                                           "Whether to display the visual representation of the robot.",
-                                           this, SLOT( updateVisualVisible() ));
+    : /*Display()
+  ,*/ has_new_transforms_(false)
+    , time_since_last_transform_(0.0f) {
+    visual_enabled_property_ = new Property("Visual Enabled", true,
+                                            "Whether to display the visual representation of the robot.",
+                                            this, SLOT(updateVisualVisible()));
 
-  collision_enabled_property_ = new Property( "Collision Enabled", false,
-                                              "Whether to display the collision representation of the robot.",
-                                              this, SLOT( updateCollisionVisible() ));
+    collision_enabled_property_ = new Property("Collision Enabled", false,
+                                               "Whether to display the collision representation of the robot.",
+                                               this, SLOT(updateCollisionVisible()));
 
-  update_rate_property_ = new FloatProperty( "Update Interval", 0,
-                                             "Interval at which to update the links, in seconds. "
-                                             " 0 means to update every update cycle.",
-                                             this );
-  update_rate_property_->setMin( 0 );
+    update_rate_property_ = new FloatProperty("Update Interval", 0,
+                                              "Interval at which to update the links, in seconds. "
+                                              " 0 means to update every update cycle.",
+                                              this);
+    update_rate_property_->setMin(0);
 
-  alpha_property_ = new FloatProperty( "Alpha", 1,
-                                       "Amount of transparency to apply to the links.",
-                                       this, SLOT( updateAlpha() ));
-  alpha_property_->setMin( 0.0 );
-  alpha_property_->setMax( 1.0 );
+    alpha_property_ = new FloatProperty("Alpha", 1,
+                                        "Amount of transparency to apply to the links.",
+                                        this, SLOT(updateAlpha()));
+    alpha_property_->setMin(0.0);
+    alpha_property_->setMax(1.0);
 
-  robot_description_property_ = new StringProperty( "Robot Description", "robot_description",
-                                                    "Name of the parameter to search for to load the robot description.",
-                                                    this, SLOT( updateRobotDescription() ));
+    robot_description_property_ = new StringProperty("Robot Description", "robot_description",
+                                                     "Name of the parameter to search for to load the robot description.",
+                                                     this, SLOT(updateRobotDescription()));
 
-  tf_prefix_property_ = new StringProperty( "TF Prefix", "",
-                                            "Robot Model normally assumes the link name is the same as the tf frame name. "
-                                            " This option allows you to set a prefix.  Mainly useful for multi-robot situations.",
-                                            this, SLOT( updateTfPrefix() ));
+    tf_prefix_property_ = new StringProperty("TF Prefix", "",
+                                             "Robot Model normally assumes the link name is the same as the tf frame name. "
+                                             " This option allows you to set a prefix.  Mainly useful for multi-robot situations.",
+                                             this, SLOT(updateTfPrefix()));
 }
 
-RobotModelDisplay::~RobotModelDisplay()
-{
-  if ( initialized() )
-  {
-    delete robot_;
-  }
+RobotModelDisplay::~RobotModelDisplay() {
+    if (initialized()) {
+        delete robot_;
+    }
 }
 
-void RobotModelDisplay::onInitialize()
-{
-  robot_ = new Robot( scene_node_, context_, "Robot: " + getName().toStdString(), this );
+void RobotModelDisplay::onInitialize() {
+    robot_ = new Robot(scene_node_, context_, "Robot: " + getName().toStdString(), this);
 
-  updateVisualVisible();
-  updateCollisionVisible();
-  updateAlpha();
+    updateVisualVisible();
+    updateCollisionVisible();
+    updateAlpha();
 }
 
-void RobotModelDisplay::updateAlpha()
-{
-  robot_->setAlpha( alpha_property_->getFloat() );
-  context_->queueRender();
+void RobotModelDisplay::processMessage(const sensor_msgs::Illuminance::ConstPtr& msg) {
+    alpha_property_->setFloat(msg->illuminance);
+    updateAlpha();
 }
 
-void RobotModelDisplay::updateRobotDescription()
-{
-  if( isEnabled() )
-  {
+void RobotModelDisplay::updateAlpha() {
+    robot_->setAlpha(alpha_property_->getFloat());
+    context_->queueRender();
+}
+
+void RobotModelDisplay::updateRobotDescription() {
+    if (isEnabled()) {
+        load();
+        context_->queueRender();
+    }
+}
+
+void RobotModelDisplay::updateVisualVisible() {
+    robot_->setVisualVisible(visual_enabled_property_->getValue().toBool());
+    context_->queueRender();
+}
+
+void RobotModelDisplay::updateCollisionVisible() {
+    robot_->setCollisionVisible(collision_enabled_property_->getValue().toBool());
+    context_->queueRender();
+}
+
+void RobotModelDisplay::updateTfPrefix() {
+    clearStatuses();
+    context_->queueRender();
+}
+
+void RobotModelDisplay::load() {
+    std::string content;
+    if (!update_nh_.getParam(robot_description_property_->getStdString(), content)) {
+        std::string loc;
+        if (update_nh_.searchParam(robot_description_property_->getStdString(), loc)) {
+            update_nh_.getParam(loc, content);
+        } else {
+            clear();
+            setStatus(StatusProperty::Error, "URDF",
+                      "Parameter [" + robot_description_property_->getString()
+                      + "] does not exist, and was not found by searchParam()");
+            return;
+        }
+    }
+
+    if (content.empty()) {
+        clear();
+        setStatus(StatusProperty::Error, "URDF", "URDF is empty");
+        return;
+    }
+
+    if (content == robot_description_) {
+        return;
+    }
+
+    robot_description_ = content;
+
+    TiXmlDocument doc;
+    doc.Parse(robot_description_.c_str());
+    if (!doc.RootElement()) {
+        clear();
+        setStatus(StatusProperty::Error, "URDF", "URDF failed XML parse");
+        return;
+    }
+
+    urdf::Model descr;
+    if (!descr.initXml(doc.RootElement())) {
+        clear();
+        setStatus(StatusProperty::Error, "URDF", "URDF failed Model parse");
+        return;
+    }
+
+    setStatus(StatusProperty::Ok, "URDF", "URDF parsed OK");
+    robot_->load(descr);
+    robot_->update(TFLinkUpdater(context_->getFrameManager(),
+                                 boost::bind(linkUpdaterStatusFunction, _1, _2, _3, this),
+                                 tf_prefix_property_->getStdString()));
+}
+
+void RobotModelDisplay::onEnable() {
     load();
-    context_->queueRender();
-  }
+    robot_->setVisible(true);
 }
 
-void RobotModelDisplay::updateVisualVisible()
-{
-  robot_->setVisualVisible( visual_enabled_property_->getValue().toBool() );
-  context_->queueRender();
+void RobotModelDisplay::onDisable() {
+    robot_->setVisible(false);
+    clear();
 }
 
-void RobotModelDisplay::updateCollisionVisible()
-{
-  robot_->setCollisionVisible( collision_enabled_property_->getValue().toBool() );
-  context_->queueRender();
-}
+void RobotModelDisplay::update(float wall_dt, float ros_dt) {
+    time_since_last_transform_ += wall_dt;
+    float rate = update_rate_property_->getFloat();
+    bool update = rate < 0.0001f || time_since_last_transform_ >= rate;
 
-void RobotModelDisplay::updateTfPrefix()
-{
-  clearStatuses();
-  context_->queueRender();
-}
+    if (has_new_transforms_ || update) {
+        robot_->update(TFLinkUpdater(context_->getFrameManager(),
+                                     boost::bind(linkUpdaterStatusFunction, _1, _2, _3, this),
+                                     tf_prefix_property_->getStdString()));
+        context_->queueRender();
 
-void RobotModelDisplay::load()
-{
-  std::string content;
-  if( !update_nh_.getParam( robot_description_property_->getStdString(), content ))
-  {
-    std::string loc;
-    if( update_nh_.searchParam( robot_description_property_->getStdString(), loc ))
-    {
-      update_nh_.getParam( loc, content );
+        has_new_transforms_ = false;
+        time_since_last_transform_ = 0.0f;
     }
-    else
-    {
-      clear();
-      setStatus( StatusProperty::Error, "URDF",
-                 "Parameter [" + robot_description_property_->getString()
-                 + "] does not exist, and was not found by searchParam()" );
-      return;
-    }
-  }
-
-  if( content.empty() )
-  {
-    clear();
-    setStatus( StatusProperty::Error, "URDF", "URDF is empty" );
-    return;
-  }
-
-  if( content == robot_description_ )
-  {
-    return;
-  }
-
-  robot_description_ = content;
-
-  TiXmlDocument doc;
-  doc.Parse( robot_description_.c_str() );
-  if( !doc.RootElement() )
-  {
-    clear();
-    setStatus( StatusProperty::Error, "URDF", "URDF failed XML parse" );
-    return;
-  }
-
-  urdf::Model descr;
-  if( !descr.initXml( doc.RootElement() ))
-  {
-    clear();
-    setStatus( StatusProperty::Error, "URDF", "URDF failed Model parse" );
-    return;
-  }
-
-  setStatus( StatusProperty::Ok, "URDF", "URDF parsed OK" );
-  robot_->load( descr );
-  robot_->update( TFLinkUpdater( context_->getFrameManager(),
-                                 boost::bind( linkUpdaterStatusFunction, _1, _2, _3, this ),
-                                 tf_prefix_property_->getStdString() ));
 }
 
-void RobotModelDisplay::onEnable()
-{
-  load();
-  robot_->setVisible( true );
+void RobotModelDisplay::fixedFrameChanged() {
+    has_new_transforms_ = true;
 }
 
-void RobotModelDisplay::onDisable()
-{
-  robot_->setVisible( false );
-  clear();
+void RobotModelDisplay::clear() {
+    robot_->clear();
+    clearStatuses();
+    robot_description_.clear();
 }
 
-void RobotModelDisplay::update( float wall_dt, float ros_dt )
-{
-  time_since_last_transform_ += wall_dt;
-  float rate = update_rate_property_->getFloat();
-  bool update = rate < 0.0001f || time_since_last_transform_ >= rate;
-
-  if( has_new_transforms_ || update )
-  {
-    robot_->update( TFLinkUpdater( context_->getFrameManager(),
-                                   boost::bind( linkUpdaterStatusFunction, _1, _2, _3, this ),
-                                   tf_prefix_property_->getStdString() ));
-    context_->queueRender();
-
-    has_new_transforms_ = false;
-    time_since_last_transform_ = 0.0f;
-  }
-}
-
-void RobotModelDisplay::fixedFrameChanged()
-{
-  has_new_transforms_ = true;
-}
-
-void RobotModelDisplay::clear()
-{
-  robot_->clear();
-  clearStatuses();
-  robot_description_.clear();
-}
-
-void RobotModelDisplay::reset()
-{
-  Display::reset();
-  has_new_transforms_ = true;
+void RobotModelDisplay::reset() {
+    Display::reset();
+    has_new_transforms_ = true;
 }
 
 } // namespace rviz
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS( rviz::RobotModelDisplay, rviz::Display )
+PLUGINLIB_EXPORT_CLASS(rviz::RobotModelDisplay, rviz::Display)
