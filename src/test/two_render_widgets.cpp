@@ -37,6 +37,9 @@
 
 #include <OgreRenderWindow.h>
 #include <OgreEntity.h>
+#include <OgreSceneNode.h>
+#include <OgreCamera.h>
+#include <OgreViewport.h>
 
 using namespace rviz;
 

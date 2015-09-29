@@ -48,6 +48,8 @@
 #include <OgreSceneManager.h>
 #include <OgreViewport.h>
 #include <OgreLight.h>
+#include <OgreCamera.h>
+#include <OgreSceneNode.h>
 
 #include <ros/time.h>
 #endif
