@@ -35,6 +35,7 @@
 #include <OgreEntity.h>
 #include <OgreMaterialManager.h>
 #include <OgreManualObject.h>
+#include <OgreMesh.h>
 
 #include <ros/console.h>
 #include <boost/lexical_cast.hpp>
